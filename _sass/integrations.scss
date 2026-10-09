@@ -91,6 +91,10 @@
       height: 5rem;
       padding: 1rem;
       position: relative;
+      // Skip layout/paint for off-screen cards; critical when
+      // "Show All" renders ~400 cards at once.
+      content-visibility: auto;
+      contain-intrinsic-size: auto 5rem;
       &-inner {
         position: absolute;
         box-sizing: border-box;
@@ -140,6 +144,7 @@
 
         & .card-back {
           transform: rotateX(180deg);
+          background: var(--integrations-card-back-bg);
           overflow: hidden;
           display: flex;
           align-items: center;

@@ -31,7 +31,7 @@ class TrackballControls extends EventDispatcher {
 
 		this.rotateSpeed = 1.0;
 		this.zoomSpeed = 1.2;
-		this.panSpeed = 0.3;
+		this.panSpeed = 0.2;
 
 		this.noRotate = false;
 		this.noZoom = false;

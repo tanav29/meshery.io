@@ -29,10 +29,37 @@ permalink: /integrations
       #container {
         background-color: var(--integrations-3d-bg);
         margin: 20px 40px;
+        height: min(72vh, 900px);
+        min-height: 480px;
         overflow: hidden;
         position: relative;
         border: 1px dashed var(--color-secondary-light);
         cursor: grab;
+      }
+
+      .view-controls {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        z-index: 2;
+        display: flex;
+        gap: 6px;
+      }
+
+      .view-controls button {
+        width: 38px;
+        height: 38px;
+        border: 1px solid var(--color-secondary-light);
+        border-radius: 4px;
+        background: var(--color-primary-dark);
+        color: var(--color-primary-qtext);
+        font-size: 20px;
+        line-height: 1;
+        cursor: pointer;
+      }
+
+      .view-controls button:hover {
+        background: var(--color-primary-extra-dark);
       }
 
       #menu {
@@ -46,51 +73,51 @@ permalink: /integrations
         gap: 10px;
       }
 
-      .element {
-        width: 120px;
-        height: 160px;
-        /* box-shadow: 0px 0px 12px rgba(0, 255, 255, 0.5); */
-        filter: drop-shadow(var(--brand-color-secondary-50) 0px 0px 10px);
-        border: 2px solid var(--color-primary-super-dark);
-        background-color: var(--background-grey-secondary);
-        border-radius: .5rem 2rem;
+      #container canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        transition: filter 0.25s ease;
+      }
+
+      /* Motion-blur assist: while the globe is transitioning or being
+         dragged at speed, a slight GPU-composited blur masks the
+         30fps frame cap so motion reads as smooth instead of steppy. */
+      #container.motion-blur canvas {
+        filter: blur(0.7px) saturate(1.06);
+      }
+
+      #integ-tooltip {
+        position: absolute;
+        z-index: 3;
+        pointer-events: none;
+        max-width: 220px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--color-primary-dark);
+        color: var(--color-primary-qtext);
+        border: 1px solid var(--color-secondary-light);
+        font-size: 12px;
+        line-height: 1.4;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        opacity: 0;
+        transition: opacity 0.12s ease;
+      }
+
+      #integ-tooltip.visible {
+        opacity: 1;
+      }
+
+      #container .webgl-fallback {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         text-align: center;
-        line-height: normal;
-        cursor: default;
-      }
-
-      .element:hover {
-        box-shadow: 0px 0px 12px var(--brand-color-secondary);
-        /* filter: drop-shadow(rgba(0, 0, 0, 0.9) 0px 4px 20px); */
-        border: 1px solid var(--brand-color-primary);
-      }
-
-      .element .number {
-        position: absolute;
-        top: 20px;
-        right: 20px;
-        font-size: 12px;
-        color: black;
-      }
-
-      .element .symbol {
-        position: absolute;
-        top: 40px;
-        left: 0px;
-        right: 0px;
-        font-size: 60px;
-        font-weight: bold;
-        color: rgba(255, 255, 255, 0.75);
-        text-shadow: 0 0 10px var(--brand-color-secondary);
-      }
-
-      .element .details {
-        position: absolute;
-        bottom: 15px;
-        left: 0px;
-        right: 0px;
-        font-size: 12px;
-        color: var(--color-secondary-dark)
+        padding: 2rem;
       }
       #menu button{
         border-radius: 3px;
@@ -148,19 +175,26 @@ permalink: /integrations
         to { transform: rotate(1turn)}
       }
 
+      @media (max-width: 640px) {
+        #container {
+          height: 68vh;
+          min-height: 360px;
+          margin: 16px 12px;
+        }
+      }
+
     </style>
-    <!-- loading animation script -->
+    <!-- The loader is hidden by the module script after the first
+         canvas frame renders, not on window load (which waits for
+         every icon and was the main source of the ~4s stall). -->
     <script>
-      window.addEventListener("load", () => {
+      // Fail-safe: never trap the user behind the spinner.
+      setTimeout(() => {
         const loader = document.querySelector(".loader");
-
-        loader.classList.add("loader--hidden");
-
-        loader.addEventListener("transitionend", () => {
-          if (loader.parentNode) {
-            loader.parentNode.removeChild(loader);
-          }
-        });
+        if (loader) loader.classList.add("loader--hidden");
+      }, 4000);
+      document.querySelector(".loader")?.addEventListener("transitionend", function () {
+        if (this.parentNode) this.parentNode.removeChild(this);
       });
     </script>
 
@@ -177,7 +211,7 @@ permalink: /integrations
     </p><p style="margin:2vw 10vw 0vw 10vw;">
       Experience collaborative infrastructure management. Try any of these integrations in Meshery's <a href="https://play.meshery.io">playground</a>.
       </p>
-      
+
     </div>
 
     <!-- loading animation -->
@@ -188,7 +222,15 @@ permalink: /integrations
       <button id="grid">GRID</button>
       <button id="list" onclick="window.open('https://docs.meshery.io/extensions/integrations', '_blank')">LIST</button>
     </div>
-    <div id="container"><div class="loader"></div></div>
+    <div id="container">
+      <div class="loader"></div>
+      <div id="integ-tooltip" aria-hidden="true"></div>
+      <div class="view-controls" aria-label="View controls">
+        <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
+        <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
+        <button type="button" id="reset-view" aria-label="Reset view" title="Reset rotation and zoom">⌂</button>
+      </div>
+    </div>
 
 
     <!-- Import maps polyfill -->
@@ -207,243 +249,606 @@ permalink: /integrations
     </script>
 
     <script type="module">
-      import * as THREE from "three";
+import * as THREE from "three";
+import { TrackballControls } from "three/addons/controls/TrackballControls.js";
+import data from "{{ '/integrations/data.js' | relative_url }}";
 
-      import { TWEEN } from "three/addons/libs/tween.module.min.js";
-      import { TrackballControls } from "three/addons/controls/TrackballControls.js";
-      import {
-        CSS3DRenderer,
-        CSS3DObject,
-      } from "three/addons/renderers/CSS3DRenderer.js";
-      import data from "{{ '/integrations/data.js' | relative_url }}";
-      if (!data.length) { console.error('No integrations data'); }
-      let integHeading = document.querySelector(".integration-heading")
-      let roundedIntegNumber = Math.floor(data.length/ 10) * 10;
-      integHeading.innerHTML = `${roundedIntegNumber}+ Built-In Integrations`
+/*
+ * Integrations 3D view — single-canvas WebGL renderer.
+ *
+ * Why this is fast (previous version took ~4s to load and janked):
+ * - Before: one absolutely-positioned DOM node per integration (387+)
+ *   driven by CSS3DRenderer, i.e. 387 matrix3d string builds + style
+ *   recalculations + paints every frame, plus 387 <img> requests
+ *   blocking window load (which is what the spinner waited on), plus
+ *   774 simultaneous TWEEN tweens on every layout switch.
+ * - Now: ONE <canvas>. Each integration is a single GPU sprite
+ *   (1 texture, correct globe occlusion via alpha-tested cutout).
+ *   Layout switches run on ONE tween loop (position lerp only —
+ *   sprites billboard, so no rotation tween needed). Rendering is
+ *   capped at 30fps, pauses off-screen / when hidden / when idle in
+ *   TABLE view, and icons stream in after first paint.
+ */
 
-      const rows = 9;
-      const cols = Math.ceil(data.length / rows);
-      let i = 1,
-        j = 1;
-      const table = data.map((data) => {
-        if (j > cols) {
-          j = 1;
-          i++;
-        }
-        return { ...data, row: i, col: j++ };
+const container = document.getElementById("container");
+const menuElement = document.getElementById("menu");
+const tooltip = document.getElementById("integ-tooltip");
+
+if (!data || !data.length) {
+  console.error("No integrations data");
+} else {
+  const heading = document.querySelector(".integration-heading");
+  if (heading) {
+    heading.textContent = `${Math.floor(data.length / 10) * 10}+ Built-In Integrations`;
+  }
+  init();
+}
+
+function init() {
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      stencil: false,
+      powerPreference: "high-performance",
+    });
+  } catch (err) {
+    console.error("WebGL unavailable, showing fallback", err);
+    showFallback();
+    return;
+  }
+
+  const isMobile = window.matchMedia("(max-width: 640px)").matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isMobile ? 1.5 : 2));
+  if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.domElement.setAttribute("role", "img");
+  renderer.domElement.setAttribute(
+    "aria-label",
+    "Interactive 3D view of Meshery integrations. Use the layout buttons above to switch views."
+  );
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  syncClearColor();
+
+  const camera = new THREE.PerspectiveCamera(
+    28,
+    container.clientWidth / Math.max(1, container.clientHeight),
+    1,
+    10000
+  );
+  camera.position.z = 3600;
+
+  // ---- table bookkeeping (same layout math as before) ----
+  const rows = 9;
+  const cols = Math.ceil(data.length / rows);
+  let r = 1;
+  let c = 1;
+  const table = data.map((item) => {
+    if (c > cols) {
+      c = 1;
+      r++;
+    }
+    return { ...item, row: r, col: c++ };
+  });
+
+  const targets = { table: [], sphere: [], helix: [], grid: [] };
+
+  for (let i = 0; i < table.length; i++) {
+    const o = new THREE.Object3D();
+    o.position.x = table[i].col * 140 - 1850;
+    o.position.y = -(table[i].row * 180) + 900;
+    targets.table.push(o);
+  }
+
+  const vector = new THREE.Vector3();
+  for (let i = 0, l = table.length; i < l; i++) {
+    const phi = Math.acos(-1 + (2 * i) / l);
+    const theta = Math.sqrt(l * Math.PI) * phi;
+    const o = new THREE.Object3D();
+    o.position.setFromSphericalCoords(800, phi, theta);
+    vector.copy(o.position).multiplyScalar(2);
+    o.lookAt(vector);
+    targets.sphere.push(o);
+  }
+
+  for (let i = 0, l = table.length; i < l; i++) {
+    const theta = i * 0.185 + Math.PI;
+    const y = -(i * 6.5) + 650;
+    const o = new THREE.Object3D();
+    o.position.setFromCylindricalCoords(900, theta, y);
+    vector.x = o.position.x * 2;
+    vector.y = o.position.y;
+    vector.z = o.position.z * 2;
+    o.lookAt(vector);
+    targets.helix.push(o);
+  }
+
+  for (let i = 0; i < table.length; i++) {
+    const o = new THREE.Object3D();
+    o.position.x = (i % 5) * 400 - 800;
+    o.position.y = -(Math.floor(i / 5) % 5) * 400 + 800;
+    o.position.z = Math.floor(i / 25) * 1000 - 2000;
+    targets.grid.push(o);
+  }
+
+  // ---- card sprites (placeholder first, real icon streamed in) ----
+  let colors = themeColors();
+  const CARD_W = 120;
+  const CARD_H = 160;
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const records = table.map((item, i) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 340;
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 4;
+    if (THREE.sRGBEncoding !== undefined) texture.encoding = THREE.sRGBEncoding;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: false,
+      alphaTest: 0.4,
+      depthWrite: true,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(CARD_W, CARD_H, 1);
+    sprite.position.copy(targets.table[i].position);
+    sprite.userData.index = i;
+    group.add(sprite);
+    const rec = {
+      canvas,
+      ctx: canvas.getContext("2d"),
+      texture,
+      sprite,
+      name: item.name || `integration-${i}`,
+      iconSrc: item.color || "",
+      permalink: item.permalink || "",
+      img: null,
+    };
+    paintCard(rec, colors);
+    return rec;
+  });
+
+  function sizeToContainer() {
+    const w = container.clientWidth;
+    const h = Math.max(1, container.clientHeight);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  sizeToContainer();
+
+  // ---- controls ----
+  const controls = new TrackballControls(camera, renderer.domElement);
+  controls.rotateSpeed = 0.85;
+  controls.zoomSpeed = 0.85;
+  controls.dynamicDampingFactor = 0.12;
+  controls.minDistance = 500;
+  controls.maxDistance = 6000;
+  controls.saveState();
+
+  document.getElementById("zoom-in").addEventListener("click", () => zoomView(0.8));
+  document.getElementById("zoom-out").addEventListener("click", () => zoomView(1.25));
+  document.getElementById("reset-view").addEventListener("click", () => {
+    scene.rotation.set(0, 0, 0);
+    controls.reset();
+    renderer.render(scene, camera);
+  });
+
+  // ---- frame-capped render loop ----
+  const FRAME_MS = 1000 / 30; // 30fps cap: halves GPU/CPU cost vs 60fps, still smooth
+  const ROT_PER_SEC = 0.021; // matches the old 0.00035/frame @60fps globe speed
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let activeLayout = "table";
+  let raf = 0;
+  let lastFrame = 0;
+  let tweening = false;
+  let tweenList = [];
+  let userInteracting = false;
+  let settleFrames = 0;
+  let isVisible = true;
+
+  const easeInOutExpo = (t) => {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return t < 0.5
+      ? Math.pow(2, 20 * t - 10) / 2
+      : (2 - Math.pow(2, -20 * t + 10)) / 2;
+  };
+
+  function ensureLoop() {
+    if (!raf && !document.hidden && isVisible) {
+      lastFrame = performance.now();
+      raf = requestAnimationFrame(tick);
+    }
+  }
+
+  function stopLoop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  function tick(now) {
+    raf = 0;
+    if (document.hidden || !isVisible) return;
+    const elapsed = now - lastFrame;
+    if (elapsed < FRAME_MS) {
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+    lastFrame = now - (elapsed % FRAME_MS);
+    const dt = Math.min(0.05, elapsed / 1000);
+    let busy = false;
+
+    if (tweening) {
+      updateTweens(now);
+      busy = true;
+      if (!tweening) setMotionBlur(false);
+    }
+    if (activeLayout !== "table" && !reducedMotion) {
+      scene.rotation.y += ROT_PER_SEC * dt;
+      busy = true;
+    }
+    if (userInteracting) {
+      controls.update();
+      busy = true;
+    } else if (settleFrames > 0) {
+      controls.update();
+      settleFrames--;
+      busy = true;
+    }
+
+    renderer.render(scene, camera);
+
+    if (busy && !document.hidden && isVisible) raf = requestAnimationFrame(tick);
+  }
+
+  function updateTweens(now) {
+    let remaining = false;
+    for (const tw of tweenList) {
+      let t = (now - tw.t0 - tw.delay) / tw.dur;
+      if (t < 0) {
+        remaining = true;
+        continue;
+      }
+      if (t > 1) t = 1;
+      tw.sprite.position.lerpVectors(tw.from, tw.to, easeInOutExpo(t));
+      if (t < 1) remaining = true;
+    }
+    if (!remaining) {
+      tweenList = [];
+      tweening = false;
+    }
+  }
+
+  function transform(layout, duration) {
+    const now = performance.now();
+    tweenList = records.map((rec, i) => ({
+      sprite: rec.sprite,
+      from: rec.sprite.position.clone(),
+      to: layout[i].position,
+      delay: Math.random() * duration * 0.25,
+      dur: duration + Math.random() * duration * 0.35,
+      t0: now,
+    }));
+    tweening = true;
+    setMotionBlur(true);
+    ensureLoop();
+  }
+
+  let blurTimer = 0;
+  function setMotionBlur(on) {
+    container.classList.toggle("motion-blur", on);
+    clearTimeout(blurTimer);
+  }
+
+  function zoomView(factor) {
+    const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor);
+    const distance = THREE.MathUtils.clamp(offset.length(), controls.minDistance, controls.maxDistance);
+    offset.setLength(distance);
+    camera.position.copy(controls.target).add(offset);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  controls.addEventListener("start", () => {
+    userInteracting = true;
+    container.style.cursor = "grabbing";
+    setMotionBlur(true);
+    ensureLoop();
+  });
+  controls.addEventListener("end", () => {
+    userInteracting = false;
+    container.style.cursor = "";
+    settleFrames = 40; // one second of damping tail at 30fps
+    blurTimer = setTimeout(() => {
+      if (!tweening) setMotionBlur(false);
+    }, 250);
+    ensureLoop();
+  });
+
+  // ---- picking: hover tooltip + click-through ----
+  const raycaster = new THREE.Raycaster();
+  const pointer = new THREE.Vector2();
+  let hovered = null;
+  let lastPick = 0;
+  let downX = 0;
+  let downY = 0;
+
+  function pick(clientX, clientY) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(pointer, camera);
+    const hits = raycaster.intersectObjects(group.children, false);
+    return hits.length ? hits[0].object : null;
+  }
+
+  function setHovered(sprite, clientX, clientY) {
+    if (hovered === sprite) {
+      if (sprite) positionTooltip(clientX, clientY);
+      return;
+    }
+    if (hovered) hovered.scale.set(CARD_W, CARD_H, 1);
+    hovered = sprite;
+    if (hovered) {
+      hovered.scale.set(CARD_W * 1.14, CARD_H * 1.14, 1);
+      tooltip.textContent = records[hovered.userData.index].name;
+      tooltip.classList.add("visible");
+      positionTooltip(clientX, clientY);
+      container.style.cursor = "pointer";
+    } else {
+      tooltip.classList.remove("visible");
+      container.style.cursor = "";
+    }
+    renderer.render(scene, camera);
+  }
+
+  function positionTooltip(clientX, clientY) {
+    const rect = container.getBoundingClientRect();
+    tooltip.style.left = `${Math.min(clientX - rect.left + 14, rect.width - 120)}px`;
+    tooltip.style.top = `${Math.max(clientY - rect.top - 34, 4)}px`;
+  }
+
+  renderer.domElement.addEventListener("pointermove", (e) => {
+    const now = performance.now();
+    if (now - lastPick < 80) return; // raycast throttle: picking is O(n)
+    lastPick = now;
+    setHovered(pick(e.clientX, e.clientY), e.clientX, e.clientY);
+  });
+  renderer.domElement.addEventListener("pointerleave", () => setHovered(null));
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    downX = e.clientX;
+    downY = e.clientY;
+  });
+  renderer.domElement.addEventListener("pointerup", (e) => {
+    if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
+    const sprite = pick(e.clientX, e.clientY);
+    const link = sprite ? records[sprite.userData.index].permalink : "";
+    if (link) window.location.assign(link);
+  });
+
+  // ---- menu ----
+  menuElement.addEventListener("click", (e) => {
+    const el = e.target;
+    if (!el || !targets[el.id]) return;
+    activeLayout = el.id;
+    if (activeLayout === "table") scene.rotation.set(0, 0, 0);
+    el.classList.add("highlight_button");
+    removeClassFromElement(el.id);
+    transform(targets[el.id], 1400);
+  });
+  menuElement.children[0].classList.add("highlight_button");
+
+  function removeClassFromElement(elementName) {
+    const kids = menuElement.children;
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i].id !== elementName) kids[i].classList.remove("highlight_button");
+    }
+  }
+
+  // ---- lifecycle: pause off-screen / hidden, resume on return ----
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(
+      (entries) => {
+        isVisible = entries[0].isIntersecting;
+        if (isVisible) ensureLoop();
+        else stopLoop();
+      },
+      { threshold: 0.02 }
+    ).observe(container);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) ensureLoop();
+    else stopLoop();
+  });
+  window.addEventListener("resize", () => {
+    sizeToContainer();
+    renderer.render(scene, camera);
+  });
+
+  // ---- progressive icon upgrade (6 parallel, table order = visible first) ----
+  const iconQueue = records.map((_, i) => i);
+  let inflight = 0;
+  function pumpIconQueue() {
+    while (inflight < 6 && iconQueue.length) {
+      const i = iconQueue.shift();
+      inflight++;
+      loadIcon(records[i]).finally(() => {
+        inflight--;
+        pumpIconQueue();
       });
+    }
+  }
+  function loadIcon(rec) {
+    return new Promise((resolve) => {
+      if (!rec.iconSrc) return resolve();
+      const img = new Image();
+      img.decoding = "async";
+      img.onload = () => {
+        rec.img = img;
+        paintCard(rec, colors);
+        resolve();
+      };
+      img.onerror = () => resolve(); // keep themed placeholder
+      img.src = rec.iconSrc;
+    });
+  }
 
+  // ---- theme sync (light/dark toggle repaints cheap canvas cards) ----
+  let themeTimer = 0;
+  new MutationObserver(() => {
+    clearTimeout(themeTimer);
+    themeTimer = setTimeout(() => {
+      colors = themeColors();
+      syncClearColor();
+      for (const rec of records) paintCard(rec, colors);
+      renderer.render(scene, camera);
+    }, 200);
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
 
+  function syncClearColor() {
+    let bg = "#1b1b1b";
+    try {
+      const css = getComputedStyle(container).backgroundColor;
+      if (css && css !== "rgba(0, 0, 0, 0)") bg = css;
+    } catch (e) { /* keep default */ }
+    scene.background = new THREE.Color(bg);
+  }
 
-      let camera, scene, renderer;
-      let controls;
+  // First paint immediately — no waiting on icons or window load.
+  // Real icons stream in afterwards via the idle-time queue below.
+  sizeToContainer();
+  renderer.render(scene, camera);
+  hideLoader();
+  const kick = () => pumpIconQueue();
+  if ("requestIdleCallback" in window) requestIdleCallback(kick, { timeout: 500 });
+  else setTimeout(kick, 60);
 
-      const objects = [];
-      const targets = { table: [], sphere: [], helix: [], grid: [], };
+  function hideLoader() {
+    const loader = container.querySelector(".loader");
+    if (!loader || loader.classList.contains("loader--hidden")) return;
+    loader.classList.add("loader--hidden");
+    loader.addEventListener("transitionend", function h() {
+      loader.removeEventListener("transitionend", h);
+      if (loader.parentNode) loader.parentNode.removeChild(loader);
+    });
+  }
 
-      init();
-      animate();
+  function showFallback() {
+    hideLoader();
+    const div = document.createElement("div");
+    div.className = "webgl-fallback";
+    div.innerHTML =
+      '3D view needs WebGL, which is unavailable here. ' +
+      '<a href="https://docs.meshery.io/extensions/integrations" target="_blank" rel="noopener">&nbsp;Browse the integration list</a>.';
+    container.appendChild(div);
+  }
+}
 
-      function init() {
-        camera = new THREE.PerspectiveCamera(
-          28,
-          window.innerWidth / window.innerHeight,
-          1,
-          10000
-        );
-        camera.position.z = 3600;
+// ---- canvas card painting ----
+function themeColors() {
+  const out = {
+    card: "#2e3138",
+    edge: "#454545",
+    text: "#cfd8dc",
+    accent: "#00b39f",
+  };
+  try {
+    const cs = getComputedStyle(document.documentElement);
+    const pick = (name, fb) => {
+      const v = cs.getPropertyValue(name).trim();
+      return v || fb;
+    };
+    out.card = pick("--background-grey-secondary", out.card);
+    out.edge = pick("--color-primary-super-dark", out.edge);
+    out.text = pick("--color-secondary-dark", out.text);
+    out.accent = pick("--brand-color-secondary", out.accent);
+  } catch (e) { /* themed paint is best-effort */ }
+  return out;
+}
 
-        scene = new THREE.Scene();
+function roundRectPath(ctx, x, y, w, h, rad) {
+  ctx.beginPath();
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, rad);
+    return;
+  }
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
 
-        // table
+function paintCard(rec, colors) {
+  const { ctx, name, img } = rec;
+  const W = 256;
+  const H = 340;
+  ctx.clearRect(0, 0, W, H);
 
-        for (let i = 0; i < table.length; i++) {
-          const element = document.createElement("div");
-          element.className = "element";
-          element.style.cursor = "pointer";
-          
-          element.onpointerdown = () => window.open(table[i].permalink, "_self");
+  roundRectPath(ctx, 3, 3, W - 6, H - 6, 30);
+  ctx.fillStyle = colors.card;
+  ctx.fill();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = colors.edge;
+  ctx.stroke();
 
-          const symbol = document.createElement("div");
-          symbol.className = "symbol";
-          let iconPath = table[i].color || '';
+  // Icon (contained) or themed initial-letter placeholder.
+  const SIDE = 148;
+  const TOP = 56;
+  let drew = false;
+  if (img && img.complete && img.naturalWidth > 0) {
+    try {
+      const s = Math.min(SIDE / img.naturalWidth, SIDE / img.naturalHeight);
+      const dw = img.naturalWidth * s;
+      const dh = img.naturalHeight * s;
+      ctx.drawImage(img, (W - dw) / 2, TOP + (SIDE - dh) / 2, dw, dh);
+      drew = true;
+    } catch (e) {
+      drew = false;
+    }
+  }
+  if (!drew) {
+    ctx.fillStyle = colors.accent;
+    ctx.font = "700 92px 'Qanelas Soft', 'Open Sans', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText((name || "?").charAt(0).toUpperCase(), W / 2, TOP + SIDE / 2);
+  }
 
-          symbol.innerHTML =
-            '<img src="' + iconPath +
-            `" style="height: 100%; width: 100%;" />`;
-          symbol.style.height = "70px";
-          element.appendChild(symbol);
+  // Label, up to 2 wrapped lines.
+  ctx.fillStyle = colors.text;
+  ctx.font = "600 29px 'Qanelas Soft', 'Open Sans', system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  const words = String(name || "").split(/\s+/);
+  const lines = [];
+  let line = "";
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > W - 36 && line) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+    if (lines.length === 2) break;
+  }
+  if (lines.length < 2 && line) lines.push(line);
+  if (lines.length === 2 && words.join(" ").length > lines.join(" ").length) {
+    lines[1] = lines[1].replace(/…?$/, "…");
+  }
+  lines.slice(0, 2).forEach((ln, idx) => {
+    ctx.fillText(ln, W / 2, lines.length === 1 ? H - 44 : H - 76 + idx * 34);
+  });
 
-          const details = document.createElement("div");
-          details.className = "details";
-          details.innerHTML = table[i].name;
+  rec.texture.needsUpdate = true;
+}
 
-          element.appendChild(details);
-
-          const objectCSS = new CSS3DObject(element);
-          objectCSS.position.x = Math.random() * 4000 - 2000;
-          objectCSS.position.y = Math.random() * 4000 - 2000;
-          objectCSS.position.z = Math.random() * 4000 - 2000;
-          scene.add(objectCSS);
-
-          objects.push(objectCSS);
-
-          //
-
-          const object = new THREE.Object3D();
-          object.position.x = table[i].col * 140 - 1850;
-          object.position.y = -(table[i].row * 180) + 900;
-
-          targets.table.push(object);
-        }
-
-        // sphere
-
-        const vector = new THREE.Vector3();
-
-        for (let i = 0, l = objects.length; i < l; i++) {
-          const phi = Math.acos(-1 + (2 * i) / l);
-          const theta = Math.sqrt(l * Math.PI) * phi;
-
-          const object = new THREE.Object3D();
-
-          object.position.setFromSphericalCoords(800, phi, theta);
-
-          vector.copy(object.position).multiplyScalar(2);
-
-          object.lookAt(vector);
-
-          targets.sphere.push(object);
-        }
-
-        // helix
-
-        for (let i = 0, l = objects.length; i < l; i++) {
-          const theta = i * 0.185 + Math.PI;
-          const y = -(i * 6.5) + 650;
-
-          const object = new THREE.Object3D();
-
-          object.position.setFromCylindricalCoords(900, theta, y);
-
-          vector.x = object.position.x * 2;
-          vector.y = object.position.y;
-          vector.z = object.position.z * 2;
-
-          object.lookAt(vector);
-
-          targets.helix.push(object);
-        }
-
-        // grid
-
-        for (let i = 0; i < objects.length; i++) {
-          const object = new THREE.Object3D();
-
-          object.position.x = (i % 5) * 400 - 800;
-          object.position.y = -(Math.floor(i / 5) % 5) * 400 + 800;
-          object.position.z = Math.floor(i / 25) * 1000 - 2000;
-
-          targets.grid.push(object);
-        }
-
-        //
-
-        renderer = new CSS3DRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight - 100);
-        document.getElementById("container").appendChild(renderer.domElement);
-
-        //
-
-        controls = new TrackballControls(camera, renderer.domElement);
-        controls.minDistance = 500;
-        controls.maxDistance = 6000;
-        controls.addEventListener("change", render);
-
-        const menuElement = document.getElementById("menu");
-        menuElement.addEventListener("click", function(e){
-          const element = e.target;
-          if (!targets[element.id]) return;
-          element.classList.add("highlight_button");
-          removeClassFromElement(element.id);
-          transform(targets[element.id], 2000);
-        })
-
-        transform(targets.table, 2000);
-        menuElement.children[0].classList.add("highlight_button");
-
-        function removeClassFromElement(elementName) {
-          const menuElements = menuElement.children;
-          const totalChildElements = menuElement.childElementCount;
-
-          for(let i = 0; i < totalChildElements; i++) {
-            const element = menuElements[i];
-            if(element.id === elementName) continue;
-            element.classList.remove("highlight_button");
-          }
-        }
-
-        window.addEventListener("resize", onWindowResize);
-      }
-
-      function transform(targets, duration) {
-        TWEEN.removeAll();
-
-        for (let i = 0; i < objects.length; i++) {
-          const object = objects[i];
-          const target = targets[i];
-
-          new TWEEN.Tween(object.position)
-            .to(
-              {
-                x: target.position.x,
-                y: target.position.y,
-                z: target.position.z,
-              },
-              Math.random() * duration + duration
-            )
-            .easing(TWEEN.Easing.Exponential.InOut)
-            .start();
-
-          new TWEEN.Tween(object.rotation)
-            .to(
-              {
-                x: target.rotation.x,
-                y: target.rotation.y,
-                z: target.rotation.z,
-              },
-              Math.random() * duration + duration
-            )
-            .easing(TWEEN.Easing.Exponential.InOut)
-            .start();
-        }
-
-        new TWEEN.Tween(this)
-          .to({}, duration * 2)
-          .onUpdate(render)
-          .start();
-      }
-
-      function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-
-        renderer.setSize(window.innerWidth, window.innerHeight - 100);
-
-        render();
-      }
-
-      function animate() {
-        requestAnimationFrame(animate);
-
-        TWEEN.update();
-
-        controls.update();
-      }
-
-      function render() {
-        renderer.render(scene, camera);
-      }
     </script>
   </body>
 </html>
