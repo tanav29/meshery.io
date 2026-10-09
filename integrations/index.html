@@ -381,6 +381,14 @@ function init() {
     targets.grid.push(o);
   }
 
+  // Center each complete layout around the camera target, including layouts
+  // whose final row or depth layer is only partially filled.
+  for (const layout of Object.values(targets)) {
+    const bounds = new THREE.Box3().setFromPoints(layout.map((item) => item.position));
+    const center = bounds.getCenter(new THREE.Vector3());
+    for (const item of layout) item.position.sub(center);
+  }
+
   // ---- card sprites (placeholder first, real icon streamed in) ----
   // Square logo-only cards: 140 world units, 256px texture.
   let colors = themeColors();
@@ -432,7 +440,7 @@ function init() {
 
   // ---- controls ----
   const controls = new TrackballControls(camera, renderer.domElement);
-  controls.rotateSpeed = 0.85;
+  controls.rotateSpeed = 1.6;
   controls.zoomSpeed = 0.85;
   controls.dynamicDampingFactor = 0.12;
   controls.minDistance = 500;
@@ -769,7 +777,7 @@ function init() {
 // ---- canvas card painting ----
 function themeColors() {
   const out = {
-    card: "#2e3138",
+    card: "#202428",
     edge: "#454545",
     text: "#cfd8dc",
     accent: "#00b39f",
@@ -780,7 +788,8 @@ function themeColors() {
       const v = cs.getPropertyValue(name).trim();
       return v || fb;
     };
-    out.card = pick("--background-grey-secondary", out.card);
+    // Keep a dark card behind both color and white integration logos in
+    // either site theme so the marks remain easy to see.
     out.edge = pick("--color-primary-super-dark", out.edge);
     out.text = pick("--color-secondary-dark", out.text);
     out.accent = pick("--brand-color-secondary", out.accent);
