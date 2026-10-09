@@ -62,6 +62,13 @@ permalink: /integrations
         background: var(--color-primary-extra-dark);
       }
 
+      .view-controls button svg {
+        width: 18px;
+        height: 18px;
+        display: block;
+        margin: 0 auto;
+      }
+
       #menu {
         position: relative;
         margin-top: 16px;
@@ -91,6 +98,8 @@ permalink: /integrations
         position: absolute;
         z-index: 3;
         pointer-events: none;
+        user-select: none;
+        -webkit-user-select: none;
         max-width: 220px;
         padding: 4px 10px;
         border-radius: 6px;
@@ -226,9 +235,9 @@ permalink: /integrations
       <div class="loader"></div>
       <div id="integ-tooltip" aria-hidden="true"></div>
       <div class="view-controls" aria-label="View controls">
-        <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">+</button>
-        <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out">−</button>
-        <button type="button" id="reset-view" aria-label="Reset view" title="Reset rotation and zoom">⌂</button>
+        <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button type="button" id="reset-view" aria-label="Reset view" title="Reset rotation and zoom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>
       </div>
     </div>
 
@@ -336,8 +345,8 @@ function init() {
 
   for (let i = 0; i < table.length; i++) {
     const o = new THREE.Object3D();
-    o.position.x = table[i].col * 140 - 1850;
-    o.position.y = -(table[i].row * 180) + 900;
+    o.position.x = table[i].col * 160 - 2000;
+    o.position.y = -(table[i].row * 160) + 800;
     targets.table.push(o);
   }
 
@@ -373,16 +382,17 @@ function init() {
   }
 
   // ---- card sprites (placeholder first, real icon streamed in) ----
+  // Square logo-only cards: 140 world units, 256px texture.
   let colors = themeColors();
-  const CARD_W = 120;
-  const CARD_H = 160;
+  const CARD_SIZE = 140;
+  const TEX_SIZE = 256;
   const group = new THREE.Group();
   scene.add(group);
 
   const records = table.map((item, i) => {
     const canvas = document.createElement("canvas");
-    canvas.width = 256;
-    canvas.height = 340;
+    canvas.width = TEX_SIZE;
+    canvas.height = TEX_SIZE;
     const texture = new THREE.CanvasTexture(canvas);
     texture.anisotropy = 4;
     if (THREE.sRGBEncoding !== undefined) texture.encoding = THREE.sRGBEncoding;
@@ -393,7 +403,7 @@ function init() {
       depthWrite: true,
     });
     const sprite = new THREE.Sprite(material);
-    sprite.scale.set(CARD_W, CARD_H, 1);
+    sprite.scale.set(CARD_SIZE, CARD_SIZE, 1);
     sprite.position.copy(targets.table[i].position);
     sprite.userData.index = i;
     group.add(sprite);
@@ -427,7 +437,9 @@ function init() {
   controls.dynamicDampingFactor = 0.12;
   controls.minDistance = 500;
   controls.maxDistance = 6000;
-  controls.saveState();
+  // NOTE: this vendored TrackballControls has no saveState() method —
+  // it snapshots target0/position0 in the constructor and reset()
+  // restores that, which is exactly the initial state we want.
 
   document.getElementById("zoom-in").addEventListener("click", () => zoomView(0.8));
   document.getElementById("zoom-out").addEventListener("click", () => zoomView(1.25));
@@ -591,11 +603,17 @@ function init() {
       if (sprite) positionTooltip(clientX, clientY);
       return;
     }
-    if (hovered) hovered.scale.set(CARD_W, CARD_H, 1);
+    if (hovered) {
+      const prev = records[hovered.userData.index];
+      hovered.scale.set(CARD_SIZE, CARD_SIZE, 1);
+      paintCard(prev, colors, false);
+    }
     hovered = sprite;
     if (hovered) {
-      hovered.scale.set(CARD_W * 1.14, CARD_H * 1.14, 1);
-      tooltip.textContent = records[hovered.userData.index].name;
+      const rec = records[hovered.userData.index];
+      hovered.scale.set(CARD_SIZE * 1.14, CARD_SIZE * 1.14, 1);
+      paintCard(rec, colors, true);
+      tooltip.textContent = rec.name;
       tooltip.classList.add("visible");
       positionTooltip(clientX, clientY);
       container.style.cursor = "pointer";
@@ -689,7 +707,7 @@ function init() {
       img.decoding = "async";
       img.onload = () => {
         rec.img = img;
-        paintCard(rec, colors);
+        paintCard(rec, colors, hovered !== null && hovered.userData.index === records.indexOf(rec));
         resolve();
       };
       img.onerror = () => resolve(); // keep themed placeholder
@@ -704,7 +722,7 @@ function init() {
     themeTimer = setTimeout(() => {
       colors = themeColors();
       syncClearColor();
-      for (const rec of records) paintCard(rec, colors);
+      records.forEach((rec, i) => paintCard(rec, colors, hovered !== null && hovered.userData.index === i));
       renderer.render(scene, camera);
     }, 200);
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
@@ -784,22 +802,31 @@ function roundRectPath(ctx, x, y, w, h, rad) {
   ctx.closePath();
 }
 
-function paintCard(rec, colors) {
+// Square logo-only card. Hover repaints the same texture with an accent
+// border + glow — the canvas equivalent of the old .element:hover
+// box-shadow/border highlight, at the cost of one texture upload.
+function paintCard(rec, colors, hovered = false) {
   const { ctx, name, img } = rec;
   const W = 256;
-  const H = 340;
+  const H = 256;
   ctx.clearRect(0, 0, W, H);
 
-  roundRectPath(ctx, 3, 3, W - 6, H - 6, 30);
+  ctx.save();
+  if (hovered) {
+    ctx.shadowColor = colors.accent;
+    ctx.shadowBlur = 26;
+  }
+  roundRectPath(ctx, 4, 4, W - 8, H - 8, 36);
   ctx.fillStyle = colors.card;
   ctx.fill();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = colors.edge;
+  ctx.lineWidth = hovered ? 7 : 5;
+  ctx.strokeStyle = hovered ? colors.accent : colors.edge;
   ctx.stroke();
+  ctx.restore();
 
   // Icon (contained) or themed initial-letter placeholder.
-  const SIDE = 148;
-  const TOP = 56;
+  const SIDE = 164;
+  const TOP = Math.round((H - SIDE) / 2);
   let drew = false;
   if (img && img.complete && img.naturalWidth > 0) {
     try {
@@ -814,37 +841,11 @@ function paintCard(rec, colors) {
   }
   if (!drew) {
     ctx.fillStyle = colors.accent;
-    ctx.font = "700 92px 'Qanelas Soft', 'Open Sans', system-ui, sans-serif";
+    ctx.font = "700 96px 'Qanelas Soft', 'Open Sans', system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText((name || "?").charAt(0).toUpperCase(), W / 2, TOP + SIDE / 2);
+    ctx.fillText((name || "?").charAt(0).toUpperCase(), W / 2, H / 2 + 4);
   }
-
-  // Label, up to 2 wrapped lines.
-  ctx.fillStyle = colors.text;
-  ctx.font = "600 29px 'Qanelas Soft', 'Open Sans', system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  const words = String(name || "").split(/\s+/);
-  const lines = [];
-  let line = "";
-  for (const w of words) {
-    const test = line ? `${line} ${w}` : w;
-    if (ctx.measureText(test).width > W - 36 && line) {
-      lines.push(line);
-      line = w;
-    } else {
-      line = test;
-    }
-    if (lines.length === 2) break;
-  }
-  if (lines.length < 2 && line) lines.push(line);
-  if (lines.length === 2 && words.join(" ").length > lines.join(" ").length) {
-    lines[1] = lines[1].replace(/…?$/, "…");
-  }
-  lines.slice(0, 2).forEach((ln, idx) => {
-    ctx.fillText(ln, W / 2, lines.length === 1 ? H - 44 : H - 76 + idx * 34);
-  });
 
   rec.texture.needsUpdate = true;
 }
